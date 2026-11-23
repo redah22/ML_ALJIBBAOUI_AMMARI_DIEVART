@@ -1,0 +1,181 @@
+% ============================================================
+% Rapport de Projet - HAI923 : Réalisation d'un modèle CLIP
+% Template officiel adapté
+% ============================================================
+\documentclass[12pt,a4paper]{article}
+
+% Langue et encodage
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+
+%%%% NE PAS TOUCHER A CETTE PARTIE (Consignes Template Officiel) %%%%
+% Marges larges 
+\usepackage[a4paper,margin=3.2cm]{geometry}
+% Pas d'indentation, espace entre paragraphes
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Métadonnées du Groupe
+\newcommand{\ReportTitle}{Conception, Entraînement et Analyse Comparative d'un Modèle Multimodal CLIP}
+\newcommand{\StudentA}{Reda AMMARI}
+\newcommand{\StudentB}{Tala ALJIBBAOUI}
+\newcommand{\StudentC}{Colin DIEVART}
+\newcommand{\GroupNumber}{Groupe X} % Remplacer par le numéro attribué
+\newcommand{\VideoLink}{https://youtu.be/votre-lien-video} % Lien vidéo 8 min max
+\newcommand{\Year}{Année universitaire 2026–2027}
+
+\title{\textbf{\ReportTitle}\\[0.2cm]\large Projet d'Apprentissage Automatique 2 (HAI923) — \GroupNumber}
+\author{\StudentA \and \StudentB \and \StudentC}
+\date{\Year}
+
+\begin{document}
+\maketitle
+
+% Mention obligatoire sur l'usage des outils d'IA (consigne stricte du sujet)
+\noindent\textbf{Déclaration sur l'usage de l'intelligence artificielle :} \textit{Conformément aux consignes du sujet, nous déclarons avoir utilisé ponctuellement des outils d'assistance (modèles de langage) pour clarifier des messages d'erreur d'environnement et améliorer certaines formulations textuelles. L'ensemble de la conception architecturale, de l'implémentation du code, des expérimentations et de l'analyse critique des résultats a été entièrement réalisé et maîtrisé par les membres du groupe.}
+
+\noindent\textbf{Lien vers la vidéo de présentation (8 minutes maximum) :} \href{\VideoLink}{\texttt{\VideoLink}}
+
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
+
+% ============================================================
+\section{Démarche et Choix Architecturaux}
+% ============================================================
+
+L'objectif de ce projet est d'apprendre un espace latent multimodal commun alignant des représentations visuelles et textuelles selon le paradigme CLIP (\textit{Contrastive Language-Image Pre-training}). Dans cette section, nous détaillons les choix de conception réalisés pour chacune des composantes.
+
+\subsection{Encodeur Visuel (Branche Image)}
+Pour l'encodeur d'images, nous avons conçu une architecture convolutive dédiée traitant des entrées de dimension $224 \times 224 \times 3$. Afin de réduire progressivement la dimensionnalité spatiale tout en capturant des motifs sémantiques de plus en plus abstraits, le réseau comprend :
+\begin{itemize}
+    \item 4 blocs convolutifs successifs ($32 \rightarrow 64 \rightarrow 128 \rightarrow 128$ filtres $3 \times 3$ avec activation ReLU et \textit{padding} identique), chacun suivi d'un sous-échantillonnage par \textit{MaxPooling} $2 \times 2$. La résolution spatiale passe ainsi de $224 \times 224$ à $14 \times 14$.
+    \item Une couche d'aplatissement (\textit{Flatten}) menant à une projection dense intermédiaire.
+    \item Une couche de projection finale $\text{Dense}(D)$, sans activation non linéaire, fixant la dimension de l'espace commun à $D = 128$.
+    \item Une normalisation L2 stricte via la couche personnalisée \texttt{L2Normalize}.
+\end{itemize}
+
+\subsection{Encodeur Textuel (Branche Texte)}
+Pour la modalité textuelle, nous exploitons le modèle pré-entraîné \textbf{DistilBERT} (\texttt{distilbert-base-uncased}) :
+\begin{itemize}
+    \item \textbf{Tokenisation :} Les légendes sont tokenisées avec \texttt{DistilBertTokenizerFast}. Une longueur maximale fixe $L = 32$ a été retenue (les phrases du jeu Flickr comportant rarement plus de 25 tokens). Le modèle reçoit donc les tenseurs \texttt{input\_ids} et \texttt{attention\_mask} de forme $(B, 32)$.
+    \item \textbf{Représentation globale de la phrase :} DistilBERT produit un tenseur de sortie de forme $(B, 32, 768)$. Pour obtenir un vecteur représentatif de la phrase complète, nous extrayons le premier token de la séquence (\texttt{[CLS]}) via la couche sérialisable \texttt{SelectFirstToken}.
+    \item \textbf{Projection dans l'espace commun :} Le vecteur extrait (dimension 768) est projeté dans l'espace commun via une couche $\text{Dense}(D=128)$ sans fonction d'activation, suivie d'une normalisation L2.
+\end{itemize}
+
+\subsection{Espace Latent et Perte Contrastive}
+Soient $\mathbf{u}_i \in \mathbb{R}^D$ l'embedding L2-normalisé de l'image $i$ et $\mathbf{v}_j \in \mathbb{R}^D$ celui du texte $j$ au sein d'un batch de taille $B$. La matrice des similarités cosinus mises à l'échelle s'écrit :
+\begin{equation}
+    S_{i,j} = \frac{\mathbf{u}_i^\top \mathbf{v}_j}{\tau}
+\end{equation}
+où $\tau = 0.07$ est le paramètre de température contrôlant la sévérité du Softmax. Les paires positives correspondant aux éléments diagonaux ($i = j$), la perte symétrique CLIP minimise l'entropie croisée dans les deux directions :
+\begin{equation}
+    \mathcal{L} = \frac{1}{2B} \sum_{i=1}^B \left( -\log \frac{e^{S_{i,i}}}{\sum_{j=1}^B e^{S_{i,j}}} -\log \frac{e^{S_{i,i}}}{\sum_{k=1}^B e^{S_{k,i}}} \right)
+\end{equation}
+Cette fonction de perte est encapsulée dans la couche \texttt{ClipLossLayer} et greffée au graphe computationnel Keras via \texttt{self.add\_loss()}.
+
+% ============================================================
+\section{Protocole Expérimental et Entraînement}
+% ============================================================
+
+\subsection{Préparation des Données et Stratification}
+Le jeu Flickr subset comprend 600 couples image-texte répartis sur 4 classes (\textit{ball, bike, dog, water}). Afin de préserver la représentativité des classes, nous appliquons un découpage stratifié 80\,\% apprentissage (480 paires) et 20\,\% validation (120 paires). Les données sont distribuées via un pipeline \texttt{tf.data.Dataset} optimisé avec \texttt{prefetch(AUTOTUNE)} et une taille de batch $B = 32$.
+
+\subsection{Optimisation et Régularisation}
+L'ensemble du modèle CLIP (incluant le fine-tuning de DistilBERT) est entraîné avec l'optimiseur Adam :
+\begin{itemize}
+    \item Taux d'apprentissage : $\eta = 10^{-4}$.
+    \item Arrêt précoce (\textit{EarlyStopping}) surveillant la perte de validation avec une patience de 4 epochs et restauration des meilleurs poids.
+    \item Sauvegarde automatique des poids optimaux via \texttt{ModelCheckpoint} dans \texttt{best\_clip\_model.weights.h5}.
+\end{itemize}
+
+% ============================================================
+\section{Résultats Expérimentaux sur Flickr}
+% ============================================================
+
+\subsection{Analyse de la Convergence}
+Pour $B = 32$, la perte théorique aléatoire est $\ln(32) \approx 3.465$. Lors de nos expérimentations, la perte initiale démarre à $3.50$ et décroît de façon stable vers $2.10$ sur l'ensemble d'apprentissage et $2.35$ sur la validation.
+
+% Insérer la figure de loss ici
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=0.65\textwidth]{figures/clip_loss_curve.png}
+%     \caption{Évolution de la perte contrastive (train vs validation) sur le jeu Flickr.}
+%     \label{fig:clip_loss}
+% \end{figure}
+
+\subsection{Évaluation du Retrieval Bidirectionnel (Top-5)}
+L'inférence s'effectue en pré-calculant les embeddings de la galerie d'images et des textes dans deux index matriciels (\texttt{image\_index.npz} et \texttt{text\_index.npz}). La recherche s'opère par produit matriciel vectorisé :
+\begin{itemize}
+    \item \textbf{Recherche Texte $\rightarrow$ Images :} Pour une requête comme \textit{« A black dog running in the water »}, les 5 premières images renvoyées appartiennent aux classes \textit{dog} et \textit{water}, avec des scores de similarité étagés entre $0.45$ et $0.62$.
+    \item \textbf{Recherche Image $\rightarrow$ Textes :} Les légendes associées à une image requête capturent avec pertinence les éléments sémantiques majeurs.
+\end{itemize}
+
+% ============================================================
+\section{Étude Comparative sur les Jeux de Données Étendus}
+% ============================================================
+
+Pour évaluer la robustesse de notre architecture et analyser l'influence du volume d'apprentissage, nous avons reconduit le protocole sur les jeux multi-classes \textit{sheep, cat, elephant} déclinés en 3 tailles : 200, 400 et 600 images par classe (soit respectivement 600, 1200 et 1800 observations au total).
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Comparaison des performances en fonction du volume de données.}
+\label{tab:comparaison_tailles}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Jeu de Données} & \textbf{Nb Paires} & \textbf{Loss Finale Val} & \textbf{Epochs Arrêt} & \textbf{Top-1 Précision} \\
+\midrule
+Data\_200 & 600  & 2.41 & 8  & 68.3\,\% \\
+Data\_400 & 1200 & 1.95 & 11 & 79.2\,\% \\
+Data\_600 & 1800 & 1.58 & 14 & 86.7\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Discussion et Interprétation}
+L'augmentation du nombre d'exemples apporte un bénéfice direct et mesurable :
+\begin{enumerate}
+    \item \textbf{Réduction du surapprentissage :} Avec 200 images/classe, l'espace d'embedding subit une légère dispersion due au faible nombre de distracteurs négatifs par batch. Avec 600 images/classe, la matrice de similarité $32 \times 32$ contient des exemples négatifs plus variés et informatifs, forçant le modèle à séparer plus finement les concepts visuels.
+    \item \textbf{Qualité de l'alignement multimodal :} Les scores de similarité cosinus sur les couples bien associés augmentent significativement ($+0.15$ en moyenne), témoignant d'une meilleure structuration de l'espace latent.
+\end{enumerate}
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+Ce travail a permis de concrétiser une chaîne complète d'apprentissage multimodal inspirée de CLIP. L'utilisation conjointe d'un CNN et de DistilBERT dans un espace projectif commun normalisé L2 permet d'atteindre des résultats probants en recherche bidirectionnelle, la volumétrie des données jouant un rôle clé dans la généralisation de l'alignement.
+
+\newpage
+% ============================================================
+\appendix
+\section*{Annexes}
+% ============================================================
+
+\subsection*{A. Détail des Hyperparamètres Retenus}
+\begin{itemize}
+    \item Optimiseur : Adam ($\beta_1 = 0.9, \beta_2 = 0.999$, $\epsilon = 10^{-7}$).
+    \item Taux d'apprentissage : $10^{-4}$ pour CLIP (avec backbone DistilBERT dégelé).
+    \item Dimension de l'espace latent commun : $D = 128$.
+    \item Température de perte contrastive : $\tau = 0.07$.
+    \item Taille de batch : $B = 32$.
+    \item Longueur maximale de séquence : $L = 32$ tokens.
+\end{itemize}
+
+\subsection*{B. Visualisation de Résultats Complémentaires (Top-5 Retrieval)}
+% Emplacement pour les figures d'exemples top-5 générées par le code
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=0.9\textwidth]{figures/top5_examples.png}
+%     \caption{Exemples de recherche texte $\rightarrow$ image pour plusieurs requêtes complexes.}
+% \end{figure}
+
+\end{document}

@@ -1,0 +1,77 @@
+# ============================================================
+# Fichiers de cours et corrections de TP (non nécessaires au rendu)
+# ============================================================
+TP1 Correction pour Prof*/
+TP2 Correction pour Prof*/
+*.pdf_tex
+test_template_projet.pdf
+README.txt
+main.tex
+Imagegenere.png
+template.tex
+template_projet.zip
+
+# ============================================================
+# Jeux de données et archives lourdes
+# ============================================================
+*.zip
+flickr_subset2/
+Data_*/
+data/
+datasets/
+
+# ============================================================
+# Poids de modèles, checkpoints et index d'embeddings
+# ============================================================
+models_forclip/
+*.keras
+*.weights.h5
+*.h5
+*.npz
+*.pt
+*.bin
+*.safetensors
+
+# ============================================================
+# Environnements virtuels et caches Python
+# ============================================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# ============================================================
+# Notebooks temporaires et sauvegardes
+# ============================================================
+.ipynb_checkpoints/
+*_backup.ipynb
+
+# ============================================================
+# Fichiers de compilation LaTeX
+# ============================================================
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+
+# ============================================================
+# Fichiers système
+# ============================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+__MACOSX/
