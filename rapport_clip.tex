@@ -43,7 +43,8 @@
 % Mention obligatoire sur l'usage des outils d'IA (consigne stricte du sujet)
 \noindent\textbf{Déclaration sur l'usage de l'intelligence artificielle :} \textit{Conformément aux consignes du sujet, nous déclarons avoir utilisé ponctuellement des outils d'assistance (modèles de langage) pour clarifier des messages d'erreur d'environnement et améliorer certaines formulations textuelles. L'ensemble de la conception architecturale, de l'implémentation du code, des expérimentations et de l'analyse critique des résultats a été entièrement réalisé et maîtrisé par les membres du groupe.}
 
-\noindent\textbf{Lien vers la vidéo de présentation (8 minutes maximum) :} \href{\VideoLink}{\texttt{\VideoLink}}
+\noindent\textbf{Lien vers la vidéo de présentation (8 minutes max) :}\\
+\href{\VideoLink}{\url{\VideoLink}}
 
 \vspace{0.5cm}
 \hrule
@@ -124,29 +125,49 @@ L'inférence s'effectue en pré-calculant les embeddings de la galerie d'images 
 \section{Étude Comparative sur les Jeux de Données Étendus}
 % ============================================================
 
-Pour évaluer la robustesse de notre architecture et analyser l'influence du volume d'apprentissage, nous avons reconduit le protocole sur les jeux multi-classes \textit{sheep, cat, elephant} déclinés en 3 tailles : 200, 400 et 600 images par classe (soit respectivement 600, 1200 et 1800 observations au total).
+Pour évaluer la capacité de généralisation de notre architecture CLIP et analyser l'impact direct du volume de données sur l'alignement multimodal, nous avons répliqué le protocole expérimental sur trois jeux de données annotés comportant les classes animalières \textit{cat, elephant, sheep}. Ces corpus présentent respectivement 200, 400 et 600 paires image-texte par classe, soit un total de 600 (Data\_200), 1\,200 (Data\_400) et 1\,800 (Data\_600) paires multimodales.
+
+Pour chaque jeu, nous avons appliqué la même répartition stratifiée 80\,\% entraînement / 20\,\% validation, la même taille de batch ($B=32$) et la même température ($\tau=0.07$).
 
 \begin{table}[htbp]
 \centering
-\small
-\caption{Comparaison des performances en fonction du volume de données.}
+\footnotesize
+\caption{Synthèse quantitative des performances sur les jeux étendus.}
 \label{tab:comparaison_tailles}
-\begin{tabular}{lcccc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Jeu de Données} & \textbf{Nb Paires} & \textbf{Loss Finale Val} & \textbf{Epochs Arrêt} & \textbf{Top-1 Précision} \\
+\textbf{Corpus} & \textbf{Paires} & \textbf{Val} & \textbf{Min $\mathcal{L}_{val}$} & \textbf{Époque} & \textbf{Top-1 Val} & \textbf{Top-5 Val} \\
 \midrule
-Data\_200 & 600  & 2.41 & 8  & 68.3\,\% \\
-Data\_400 & 1200 & 1.95 & 11 & 79.2\,\% \\
-Data\_600 & 1800 & 1.58 & 14 & 86.7\,\% \\
+Data\_200 & 600  & 120 & 2.9974 & 4 & 2.50\,\% \scriptsize(vs 0.83\,\%) & 15.42\,\% \scriptsize(vs 4.17\,\%) \\
+Data\_400 & 1200 & 240 & 2.8707 & 3 & 0.83\,\% \scriptsize(vs 0.42\,\%) & 7.92\,\% \scriptsize(vs 2.08\,\%) \\
+Data\_600 & 1800 & 360 & 2.8197 & 2 & 1.53\,\% \scriptsize(vs 0.28\,\%) & 7.92\,\% \scriptsize(vs 1.39\,\%) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Discussion et Interprétation}
-L'augmentation du nombre d'exemples apporte un bénéfice direct et mesurable :
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{comparaison_perte_tailles.png}
+    \caption{Dynamique de la perte contrastive (Train vs Val) selon la volumétrie des données.}
+    \label{fig:comparaison_perte}
+\end{figure}
+
+\subsection{Discussion et Analyse des Résultats}
+
+Les courbes d'apprentissage de la Figure~\ref{fig:comparaison_perte} et les indicateurs du Tableau~\ref{tab:comparaison_tailles} mettent en lumière plusieurs phénomènes fondamentaux propres à l'apprentissage contrastif :
+
 \begin{enumerate}
-    \item \textbf{Réduction du surapprentissage :} Avec 200 images/classe, l'espace d'embedding subit une légère dispersion due au faible nombre de distracteurs négatifs par batch. Avec 600 images/classe, la matrice de similarité $32 \times 32$ contient des exemples négatifs plus variés et informatifs, forçant le modèle à séparer plus finement les concepts visuels.
-    \item \textbf{Qualité de l'alignement multimodal :} Les scores de similarité cosinus sur les couples bien associés augmentent significativement ($+0.15$ en moyenne), témoignant d'une meilleure structuration de l'espace latent.
+    \item \textbf{Amélioration systématique de la perte de validation :} La valeur minimale de $\mathcal{L}_{val}$ s'améliore de manière monotone avec la taille de la base ($2.9974 \rightarrow 2.8707 \rightarrow 2.8197$). Cela confirme empiriquement la loi d'échelle du pré-entraînement contrastif : un volume d'apprentissage plus étendu expose le modèle à une diversité sémantique supérieure et enrichit le bassin de négatifs au fil des époques.
+    
+    \item \textbf{Surapprentissage et capacité des encodeurs :} On observe une chute drastique de la perte d'entraînement, particulièrement marquée sur Data\_600 où $\mathcal{L}_{train}$ passe de $3.49$ à $0.58$ en seulement 5 époques, tandis que la perte de validation se stabilise autour de $2.82$. Cette divergence rapide s'explique par la haute expressivité de DistilBERT (66 millions de paramètres dégelés) face à un CNN entraîné \textit{from scratch} sur une base de taille modeste ($N < 2000$). L'optimiseur réussit à projeter le corpus d'entraînement dans des configurations quasi-parfaites, sans que la régularisation intrinsèque ($B=32$) suffise à empêcher une sur-spécialisation.
+    
+    \item \textbf{Performance de Retrieval face à la chance aléatoire :} Le retrieval exact (Top-1 et Top-5) consiste à retrouver l'unique image associée à un texte parmi l'intégralité du pool de validation ($N_{val} = 120, 240, 360$). Bien que le Top-1 brut semble modeste en valeur absolue, le modèle dépasse très largement la ligne de base aléatoire (qui est de $\frac{1}{N_{val}}$ pour le Top-1 et $\frac{5}{N_{val}}$ pour le Top-5) :
+    \begin{itemize}
+        \item Sur Data\_200 ($N_{val}=120$) : le Top-1 ($2.50\,\%$) surpasse l'aléa ($0.83\,\%$) d'un facteur 3, et le Top-5 ($15.42\,\%$) d'un facteur 3.7.
+        \item Sur Data\_400 ($N_{val}=240$) : le Top-5 ($7.92\,\%$) est 3.8 fois supérieur au hasard ($2.08\,\%$) ;
+        \item Sur Data\_600 ($N_{val}=360$) : le Top-5 ($7.92\,\%$) est 5.7 fois supérieur au hasard ($1.39\,\%$).
+    \end{itemize}
+    Ce comportement démontre qu'à mesure que le nombre de distracteurs négatifs augmente, le modèle conserve une discrimination sémantique robuste.
 \end{enumerate}
 
 % ============================================================

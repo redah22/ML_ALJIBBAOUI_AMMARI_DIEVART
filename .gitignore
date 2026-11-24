@@ -15,8 +15,12 @@ template_projet.zip
 # Jeux de données et archives lourdes
 # ============================================================
 *.zip
+*.tar
+*.tar.gz
+*.tgz
 flickr_subset2/
 Data_*/
+data_*/
 data/
 datasets/
 
